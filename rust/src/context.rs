@@ -84,6 +84,7 @@ static DEVICES: AtomicPtr<DeviceList> = AtomicPtr::new(null_mut());
 static DEVICE_LIFECYCLE: Mutex<()> = Mutex::new(());
 static SIMPLE_VRAM_HEADROOM: AtomicI64 = AtomicI64::new(VRAM_HEADROOM as i64);
 thread_local! {
+    // PyTorch 的钩子可能从不同线程进入，按当前线程绑定对应的 CUDA 设备上下文。
     static CURRENT_DEVICE: Cell<*mut AimdoContext> = const { Cell::new(null_mut()) };
 }
 
@@ -349,6 +350,7 @@ pub(crate) unsafe extern "C" fn aimdo_rs_cleanup() {
     let Ok(_lifecycle) = DEVICE_LIFECYCLE.try_lock() else {
         return;
     };
+    // 先阻止新的查找。已取得裸指针的调用需要在进入清理前退出。
     let list = DEVICES.swap(null_mut(), Ordering::AcqRel);
     if list.is_null() {
         aimdo_rs_set_devctx(null_mut());
@@ -411,6 +413,7 @@ pub(crate) unsafe extern "C" fn aimdo_rs_init(
             }
             aimdo_control_c_log_device(device, capacity as usize);
         }
+        // 所有设备的分配表和锁初始化成功后，再让 CUDA 分配钩子看到设备列表。
         DEVICES.store(list, Ordering::Release);
     }
     aimdo_rs_set_devctx(null_mut());

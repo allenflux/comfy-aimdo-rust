@@ -11,8 +11,9 @@ pub(crate) type CuMemAllocationHandle = u64;
 
 pub(crate) const CUDA_SUCCESS: CuResult = 0;
 
-// Match the minimum CUDA driver ABI requested by src-cuda/dispatch.c.
+// 固定 v0.6.0 请求的 Driver API ABI，避免新驱动返回与绑定签名不一致的版本。
 const CUDA_ABI_VERSION: c_int = 12060;
+// 异步分配和释放要分别解析传统默认流和线程默认流两个入口。
 const LEGACY_STREAM: u64 = 1;
 const PER_THREAD_STREAM: u64 = 2;
 
@@ -59,8 +60,8 @@ type CuGetProcAddress =
     unsafe extern "C" fn(*const c_char, *mut *mut c_void, c_int, u64, *mut c_uint) -> CuResult;
 type CuDeviceGetLuid = unsafe extern "C" fn(*mut c_char, *mut c_uint, CuDevice) -> CuResult;
 
-// The declaration order follows AimdoCudaDispatch in src/gpu_dispatch.h.
-// The resolver and the Windows-only LUID slot do not use this lookup table.
+// 字段顺序与 v0.6.0 的 AimdoCudaDispatch 一致，便于复用 ABI 对照测试。
+// 解析器和 Windows 专用的 LUID 槽位不参与下表的批量解析。
 macro_rules! define_dispatch {
     ($($field:ident: ($($argument:ty),*) => $symbol:literal, $flags:ident;)+) => {
         #[repr(C)]
@@ -203,6 +204,7 @@ pub(crate) unsafe extern "C" fn aimdo_cuda_runtime_init() -> bool {
             return false;
         }
         let resolver = transmute::<*mut c_void, CuGetProcAddress>(symbol);
+        // 先解析到本地表，只有整个表可用且驱动初始化成功才发布。
         let mut next = AimdoCudaDispatch::EMPTY;
         next.get_proc_address = Some(resolver);
         let Some(init) = AimdoCudaDispatch::resolve(&mut next, resolver) else {

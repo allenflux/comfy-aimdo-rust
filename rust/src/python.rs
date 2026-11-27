@@ -16,8 +16,8 @@ macro_rules! function_addresses {
     (@select $module:ident, $name:ident, $function:ident) => { $module::$function };
 }
 
-// The original Python modules declare ctypes signatures for these private entry points.
-// The linker exports only PyInit__native, so consumers continue to use the Python API.
+// 原 Python 包装层仍负责声明 ctypes 参数和返回类型。私有扩展仅为包装层查找这些地址，
+// 链接器只导出 PyInit__native，ComfyUI 仍通过原 Python 接口调用。
 function_addresses! {
     context {
         plat_init => aimdo_rs_plat_init,

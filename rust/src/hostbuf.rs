@@ -32,6 +32,7 @@ pub(crate) extern "C" fn hostbuf_reserve_granularity() -> usize {
 
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn hostbuf_reserve_address_space(size: usize) -> *mut c_void {
+    // 先保留地址区间，按扩容请求提交物理页，供 Torch 使用稳定的起始地址。
     let address = unsafe {
         libc::mmap(
             null_mut(),

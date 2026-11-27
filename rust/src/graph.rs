@@ -1,5 +1,5 @@
-//! Stream-local CUDA allocation recording and replay. Events keep stable addresses across
-//! branches. Raw pointers avoid borrowing graph state across CUDA calls and pageout callbacks.
+//! 按 CUDA stream 录制和重放分配。分支事件保留稳定的虚拟地址，供 CUDA Graph 重放使用。
+//! 驱动调用或回写回调可能再次进入钩子，因此这些边界上不持有图状态的 Rust 引用。
 
 use core::ffi::{c_char, c_void, CStr};
 use core::mem::size_of;
@@ -623,6 +623,7 @@ unsafe fn map_page(graph: *mut MallocGraph, va: usize, phys: usize) -> CuResult 
     }
 }
 
+// 先恢复事件对应的逻辑分配状态；物理页映射由 materialize 按需补齐。
 unsafe fn dry_apply(graph: *mut MallocGraph, event: *mut Event) -> bool {
     unsafe {
         let kind = (*event).kind;
@@ -756,6 +757,7 @@ unsafe fn scrub_rogue_snapshots(graph: *mut MallocGraph, event: *mut Event) {
     }
 }
 
+// 图退出时仍有张量使用的页交给设备侧追踪，由张量后续的释放钩子回收。
 unsafe fn handoff_rogues(graph: *mut MallocGraph) -> bool {
     unsafe {
         (*graph).handoff_attempted = true;

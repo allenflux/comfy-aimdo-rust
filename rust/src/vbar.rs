@@ -20,6 +20,7 @@ unsafe extern "C" {
 
 const PAGE: usize = PAGE_BYTES as usize;
 
+// 每张卡维护自己的 VBAR 优先级。两个哨兵只负责链表边界，不占权重显存。
 unsafe fn priorities() -> (*mut ModelVBAR, *mut ModelVBAR) {
     // SAFETY: The caller selected a live context and owns its VBAR list accesses.
     unsafe {
@@ -269,6 +270,7 @@ pub unsafe extern "C" fn vbar_allocate(
             log(CRITICAL, format_args!("Host OOM\n"));
             return null_mut();
         }
+        // 这里只预留虚拟地址，权重页的物理显存在 fault 时按需映射。
         if !check_cuda(
             cuda!(
                 mem_address_reserve,

@@ -61,6 +61,7 @@ unsafe fn next_slot(context: *mut AimdoContext, stream: CuStream) -> *mut Hostbu
         let active = ((*context).hostbuf_file_reader_active + 1) % SLOTS;
         (*context).hostbuf_file_reader_active = active;
         let slot = slot_at(context, active);
+        // 回到旧槽位时，先等该槽位上一次的异步拷贝完成，再覆盖锁页缓冲区。
         if !(*slot).buffer.is_null() && !(*slot).event.is_null() {
             if !check_cuda(
                 cuda!(event_synchronize, (*slot).event),

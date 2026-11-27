@@ -4,15 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfy-aimdo-rust"
-version = "0.1.0"
+version = "0.1.1"
 description = "Rust CUDA backend for the ComfyUI AI Model Dynamic Offloader"
 readme= "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-only"
+license-files = ["LICENSE", "licenses/*.txt"]
 authors = [{name = "rattus"}]
 
 [project.urls]
-Repository = "https://github.com/Comfy-Org/comfy-aimdo"
+Repository = "https://github.com/allenflux/comfy-aimdo-rust"
+Upstream = "https://github.com/Comfy-Org/comfy-aimdo"
 
 [tool.setuptools]
 packages = ["comfy_aimdo"]

@@ -38,6 +38,7 @@ mod xfer_file;
 
 use core::ptr::addr_of_mut;
 
+// VBAR 按 32 MiB 管理权重页。一段张量可以跨页，且多个张量可能共用一页。
 pub(crate) const PAGE_BYTES: u64 = 32 << 20;
 const CUDA_SUCCESS: i32 = 0;
 const CUDA_ERROR_OUT_OF_MEMORY: i32 = 2;
@@ -49,6 +50,7 @@ const FAULT_ERROR: i32 = 2;
 pub(crate) struct ResidentPage {
     pub(crate) handle: u64,
     pub(crate) pin_count: u32,
+    // 物理页重新映射后递增。Python 用它识别需要重新拷入权重的页。
     pub(crate) serial: usize,
 }
 
@@ -56,6 +58,7 @@ pub(crate) struct ResidentPage {
 pub struct ModelVBAR {
     pub(crate) vbar: u64,
     pub(crate) nr_pages: usize,
+    // 水位是允许调入的页号上界，压力回收从高页号向下推进至回收下限。
     pub(crate) watermark: usize,
     pub(crate) watermark_limit: usize,
     pub(crate) device: i32,
@@ -106,7 +109,7 @@ pub(crate) fn pages_for_bytes(bytes: u64) -> usize {
 }
 
 pub(crate) unsafe fn page_at(vbar: *mut ModelVBAR, page: usize) -> *mut ResidentPage {
-    // SAFETY: The C allocation includes nr_pages entries after the header.
+    // SAFETY: 创建 VBAR 时在结构体尾部预留了 nr_pages 个页记录。
     unsafe {
         addr_of_mut!((*vbar).residency_map)
             .cast::<ResidentPage>()
@@ -115,7 +118,7 @@ pub(crate) unsafe fn page_at(vbar: *mut ModelVBAR, page: usize) -> *mut Resident
 }
 
 /// # Safety
-/// `vbar` and `page` must refer to a live C allocation on the current AIMDO device.
+/// `vbar` 必须指向当前 AIMDO 设备上仍有效的对象，且 `page` 必须是范围内的页号。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aimdo_rs_vbar_modify_page(
     vbar: *mut ModelVBAR,
@@ -123,14 +126,15 @@ pub unsafe extern "C" fn aimdo_rs_vbar_modify_page(
     do_free: bool,
     do_unpin: bool,
 ) -> i32 {
-    // SAFETY: C owns the object and device context for this call. Raw pointers keep any C
-    // driver or writeback callback from overlapping a Rust reference to the object.
+    // SAFETY: 调用方保证对象和设备上下文有效。驱动调用或回写回调执行期间，
+    // 不持有指向页记录的 Rust 可变引用。
     unsafe {
         let entry = page_at(vbar, page);
         let free_page = do_free && (*entry).handle != 0 && (do_unpin || (*entry).pin_count == 0);
         if free_page {
             let offset = page as u64 * PAGE_BYTES;
             if let Some(writeback) = (*vbar).pageout_callback {
+                // 可写权重必须先等 GPU 完成，再回写。回写失败时保留当前映射。
                 let size = PAGE_BYTES.min((*vbar).pageout_size - offset);
                 if !aimdo_vbar_c_sync() || !writeback(offset, size) {
                     return -1;
@@ -322,6 +326,7 @@ pub unsafe extern "C" fn aimdo_rs_vbar_fault(
             *signature.add(page - first_page) = (*entry).serial as u32;
         }
 
+        // 整段权重都映射成功后才增加 pin。缺页中途失败不会留下消费者的 pin。
         for page in first_page..page_end {
             let entry = page_at(vbar, page);
             (*entry).pin_count = (*entry).pin_count.wrapping_add(1);
@@ -347,7 +352,7 @@ pub unsafe extern "C" fn aimdo_rs_vbar_unpin(vbar: *mut ModelVBAR, offset: u64, 
             let entry = page_at(vbar, page);
             (*entry).pin_count = (*entry).pin_count.saturating_sub(1);
         }
-        // Drop every pin before writeback, since a callback can interrupt eviction.
+        // 先解除整段权重的 pin，再尝试回收。即使回写失败，其余页也能解除本次占用。
         for page in first_page..resident_end {
             if aimdo_rs_vbar_modify_page(vbar, page, page >= (*vbar).watermark, false) < 0 {
                 return false;

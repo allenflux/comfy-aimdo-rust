@@ -180,6 +180,7 @@ pub unsafe extern "C" fn aimdo_cuda_malloc(
         }
         *ptr = 0;
         let bytes = size.wrapping_add(CUDA_MALLOC_HEADROOM);
+        // 先让出权重页，再调用原始 CUDA 分配函数。首次分配失败时加做一次回收。
         if !vbars_free(budget_deficit(bytes)) {
             return CUDA_ERROR_UNKNOWN;
         }
@@ -247,6 +248,7 @@ pub unsafe extern "C" fn aimdo_cuda_malloc_async(
             return original(ptr, size, stream);
         }
         let mut status = 0;
+        // 属于当前分配图的流优先重放，其他请求仍走驱动分配和 VBAR 压力回收。
         if malloc_graph_alloc(ptr, size, stream, &mut status) {
             return status;
         }
@@ -505,6 +507,7 @@ pub unsafe extern "C" fn aimdo_setup_hooks() -> bool {
             return false;
         }
         HOOKS = hook;
+        // Funchook 会把各入口的原始调用地址写回对应的 trampoline 槽位。
         macro_rules! entry {
             ($storage:ident, $field:ident, $replacement:ident, $name:literal) => {
                 HookEntry {
