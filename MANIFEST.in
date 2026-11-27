@@ -1,0 +1,8 @@
+include LICENSE README.md build-linux-docker
+include docker/rust-wheel.Dockerfile
+include scripts/build-linux-aimdo.sh scripts/build-rust-wheel.sh scripts/python-exports.map
+include rust/Cargo.toml rust/Cargo.lock rust/MAP.md
+recursive-include rust/src *.rs
+include vendor/funchook-1.1.3.tar.gz
+exclude comfy_aimdo/_version.py
+global-exclude *.so *.dll *.pyc

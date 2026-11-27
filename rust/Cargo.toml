@@ -1,0 +1,24 @@
+[package]
+name = "aimdo-vbar"
+version = "0.6.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[lib]
+path = "src/port.rs"
+crate-type = ["staticlib"]
+
+[features]
+cuda-control = []
+rust-backend = ["cuda-control", "dep:libc", "dep:pyo3"]
+
+[dependencies]
+libc = { version = "0.2", optional = true }
+pyo3 = { version = "=0.23.5", features = ["abi3-py310", "extension-module"], optional = true }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

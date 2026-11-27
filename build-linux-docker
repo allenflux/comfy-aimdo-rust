@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+BUILDER=comfy-aimdo-rust-builder:0.6.0
+
+docker build --platform linux/amd64 -t "$BUILDER" \
+    -f "$ROOT_DIR/docker/rust-wheel.Dockerfile" "$ROOT_DIR/docker"
+docker run --rm --platform linux/amd64 \
+    --mount "type=bind,src=$ROOT_DIR,dst=/src" "$BUILDER"

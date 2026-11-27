@@ -1,0 +1,13 @@
+*.dll
+*.so
+*.obj
+*.o
+*.exp
+*.lib
+build/
+dist/
+*.egg-info/
+.venv/
+/rust/target/
+/comfy_aimdo/_version.py
+__pycache__/
